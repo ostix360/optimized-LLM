@@ -1,23 +1,33 @@
 # Optimized LLM
 
-The goal of this repository is to use the most optimized technic to train from scratch a LLM.
+The goal of this repository is to use the most optimized technic to train from scratch a LLM and to be the fastest at inference time.
+
+I call this llm anemone, but I'm not satisfied with this name.
+why not MoM for mixture of mixture ?
 
 ## Installation
 
 Using a virtual environment is recommended.
 
+
+```bash
+pip install --upgrade torch --index-url https://download.pytorch.org/whl/cu121 
+```
+
+
 ```bash
 pip install -r requirements.txt
 ```
 
+
 ## TODO
 
-- [ ] Add [1.58 bits](https://arxiv.org/abs/2402.17764) linear layer for fastest inference but with quality loss
-- [ ] Add [Galore](https://arxiv.org/abs/2403.03507) for the training
-- [ ] Use [Jamba](https://arxiv.org/abs/2403.19887) as base architecture
+- [x] Add [1.58 bits](https://arxiv.org/abs/2402.17764) linear layer for fastest inference but with quality loss (code from [1.58 bits](https://github.com/kyegomez/BitNet))
+- [x] Add [Galore](https://arxiv.org/abs/2403.03507) for the training
+- [x] Use [Jamba](https://arxiv.org/abs/2403.19887) as base architecture (code from [jamba](https://huggingface.co/ai21labs/Jamba-v0.1))
 - [ ] Use [Mixture of depth](https://arxiv.org/abs/2404.02258) 
-- [ ] Use [Mixture of attention head](https://arxiv.org/abs/2306.04640) (See JetMoE)
-- [ ] Add a script to train a LLM model from scratch
+- [x] Use [Mixture of attention head](https://arxiv.org/abs/2210.05144) (code from [JetMoE](https://github.com/myshell-ai/JetMoE))
+- [x] Add a script to train a LLM model from scratch
 
 
 ## Contributing

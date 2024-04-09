@@ -1,0 +1,8 @@
+packaging
+bitnet
+galore-torch
+mamba-ssm
+causal-conv1d>=1.2.0
+transformers>=4.39.0
+dataset
+accelerate
