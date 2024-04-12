@@ -69,11 +69,14 @@ def tokenize(element):
 
 
 textbooks_split = int(100_000 * 1)
+eval_split = int(1_000 * 0.1)
 
 t_ultra_textbooks = load_dataset("Locutusque/UltraTextbooks", split=f"train[:{textbooks_split}]")
+eval_ultra_textbooks = load_dataset("Locutusque/UltraTextbooks", split=f"train[{textbooks_split}:{textbooks_split + eval_split}]")
 
 key = "text"
 train_dataset = t_ultra_textbooks.map(tokenize, batched=True, batch_size=10000, remove_columns=t_ultra_textbooks.column_names, )
+eval_dataset = eval_ultra_textbooks.map(tokenize, batched=True, batch_size=10000, remove_columns=eval_ultra_textbooks.column_names, )
 
 batch_size = 5
 steps = len(train_dataset)
@@ -103,7 +106,7 @@ args = TrainingArguments(
     max_steps=steps // batch_size,
     save_total_limit=1,
     save_strategy="steps",
-    save_steps=steps // batch_size,
+    save_steps=10000,
     weight_decay=0.02,
     lr_scheduler_type="linear",
     output_dir="./trains",
@@ -114,6 +117,7 @@ trainer = Trainer(
     model=model,
     args=args,
     train_dataset=train_dataset,
+    eval_dataset=eval_dataset,
     data_collator=data_collator,
 )
 
@@ -129,4 +133,6 @@ print_nb_trainable_params(model)
 model.to("cuda", dtype=torch.bfloat16)
 model.train()
 
-trainer.train()
+trainer.train(resume_from_checkpoint=False)
+trainer.save_model("./model-anemone")
+# model.push_to_hub("MoM")

@@ -679,6 +679,7 @@ class AnemoneForCausalLM(AnemonePreTrainedModel):
             output_attentions=None,
             output_hidden_states=None,
             output_router_logits=None,
+            calc_logits_for_entire_prompt=None,
             return_dict=None,
     ) -> Union[Tuple, MoECausalLMOutputWithPast]:
         r"""
@@ -697,6 +698,8 @@ class AnemoneForCausalLM(AnemonePreTrainedModel):
             output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
         )
         use_cache = use_cache if use_cache is not None else self.config.use_cache
+
+        calc_logits_for_entire_prompt = calc_logits_for_entire_prompt if calc_logits_for_entire_prompt is not None else self.config.calc_logits_for_entire_prompt
 
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
@@ -728,7 +731,7 @@ class AnemoneForCausalLM(AnemonePreTrainedModel):
         )
 
         hidden_states = outputs[0]
-        if self.config.calc_logits_for_entire_prompt:
+        if calc_logits_for_entire_prompt:
             logits = self.lm_head(hidden_states)
         else:
             logits = self.lm_head(hidden_states[..., -1:, :])
@@ -788,7 +791,7 @@ class AnemoneForCausalLM(AnemonePreTrainedModel):
         if past_key_values is not None:
             # the cache may be in the stardard format (e.g. in contrastive search), convert to Jamba's format if needed
             if isinstance(past_key_values, Tuple):
-                if past_key_values[self.model._mamba_layer_index][0].shape[2] > 1:
+                if past_key_values[self.anemone._mamba_layer_index][0].shape[2] > 1:
                     past_key_values = self._convert_to_jamba_cache(past_key_values)
 
             if isinstance(past_key_values, Cache):
@@ -800,7 +803,7 @@ class AnemoneForCausalLM(AnemonePreTrainedModel):
                 past_length = past_key_values.seen_tokens
                 max_cache_length = past_key_values.get_max_length()
             else:
-                cache_length = past_length = past_key_values[self.model._attn_layer_index][0].shape[2]
+                cache_length = past_length = past_key_values[self.anemone._attn_layer_index][0].shape[2]
                 max_cache_length = None
 
             # Keep only the unprocessed tokens:
