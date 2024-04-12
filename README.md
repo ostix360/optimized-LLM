@@ -30,6 +30,19 @@ pip install -r requirements.txt
 - [x] Add a script to train a LLM model from scratch
 
 
+## Test
+
+To test the first model, that has 1.58 bits linear layer, jamba base architecture and moah:
+
+
+
+you can clone this repo at this commit and run the following command:
+
+```bash
+python infer.py
+```
+
+
 ## Contributing
 
 Contributions are welcome.

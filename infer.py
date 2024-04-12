@@ -2,10 +2,10 @@ from transformers import AutoTokenizer
 
 from model.modeling_anemone import AnemoneForCausalLM
 
-model_name="./model-anemone"
+model_name="Ostixe360/Moah-MoE-1.58b-1B"
 
 model = AnemoneForCausalLM.from_pretrained(model_name)
-tokenizer = AutoTokenizer.from_pretrained("ai21labs/Jamba-v0.1")
+tokenizer = AutoTokenizer.from_pretrained(model_name)
 
 prompt = "This is a story about"
 inputs = tokenizer(prompt, return_tensors="pt")
