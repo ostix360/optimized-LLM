@@ -1,9 +1,12 @@
 import warnings
 from typing import Optional, Tuple, Union, List
 
+import bitnet
 import torch
+from einops import repeat
 from torch import nn
 from torch.nn import CrossEntropyLoss
+from torch.nn import functional as F
 from transformers import logging, Cache, add_start_docstrings, PreTrainedModel
 from transformers.modeling_outputs import MoeModelOutputWithPast, MoECausalLMOutputWithPast
 from transformers.utils import add_start_docstrings_to_model_forward, replace_return_docstrings
@@ -97,10 +100,21 @@ def load_balancing_loss_func(
     return overall_loss * num_experts
 
 
+def load_mod_loss(weights: List[torch.Tensor], topk_indices: List[torch.Tensor],):
+    token_weights = torch.stack(weights).flatten(0, 1)
+    aux_targets = torch.zeros_like(token_weights)
+    batches = torch.arange(token_weights.size(0)).unsqueeze(-1)
+    aux_targets[batches, torch.stack(topk_indices).flatten(0, 1)] = 1.0
+    aux_targets = aux_targets.flatten()
+    causal_loss = F.binary_cross_entropy_with_logits(token_weights.flatten().to("cuda"), aux_targets.to("cuda"))
+    return causal_loss
+
+
+
 class AnemoneAttentionDecoderLayer(nn.Module):
     def __init__(self, config: AnemoneConfig, num_experts: int, layer_idx: int):
         super().__init__()
-
+        self.layer_idx = layer_idx
         self.self_attn = JAMBA_ATTENTION_CLASSES[config._attn_implementation](config, layer_idx)
 
         num_experts_per_tok = config.num_experts_per_tok if num_experts > 1 else 1
@@ -179,7 +193,7 @@ class AnemoneAttentionDecoderLayer(nn.Module):
 class AnemoneMambaDecoderLayer(nn.Module):
     def __init__(self, config: AnemoneConfig, num_experts: int, layer_idx: int):
         super().__init__()
-
+        self.layer_idx = layer_idx
         self.mamba = AnemoneMambaMixer(config=config, layer_idx=layer_idx)
 
         num_experts_per_tok = config.num_experts_per_tok if num_experts > 1 else 1
@@ -424,6 +438,22 @@ class AnemoneModel(AnemonePreTrainedModel):
 
         self.embed_tokens = nn.Embedding(config.vocab_size, config.hidden_size, self.padding_idx)
 
+        self.router = None
+        self.aux_router = None
+        if config.mod_routing:
+            self.router = bitnet.BitLinearNew(config.hidden_size, 1, bias=False)
+            if config.mod_aux_routing:
+                self.aux_router = nn.Sequential(
+                    bitnet.BitLinearNew(config.hidden_size, config.hidden_size // 2, bias=False),
+                    nn.SiLU(),
+                    bitnet.BitLinearNew(config.hidden_size // 2, 1, bias=False)
+                )
+
+        self.capacity = config.capacity
+        self.skip_block = config.skip_blocks
+        self.aux_routing = config.mod_aux_routing
+        self.hidden_size = config.hidden_size
+
         # init each model layer, decide if it's mamba/attention and has experts or not
         decoder_layers = []
         for i in range(config.num_hidden_layers):
@@ -554,6 +584,7 @@ class AnemoneModel(AnemonePreTrainedModel):
                 (batch_size, seq_length),
                 inputs_embeds,
                 past_key_values_length,
+                sliding_window=self.config.sliding_window,
             )
         else:
             # 4d mask is passed through the layers
@@ -572,13 +603,62 @@ class AnemoneModel(AnemonePreTrainedModel):
         all_self_attns = () if output_attentions else None
         attn_router_loss = 0 if output_router_logits else None
         mlp_router_logits = () if output_router_logits else None
-        mod_router_logits = () if output_router_logits else None
+        topk_indices_list = [] if output_router_logits else None
+        token_weights_list = [] if output_router_logits else None
         all_router_logits = () if output_router_logits else None
         next_decoder_cache = None
 
         for decoder_layer in self.layers:
             if output_hidden_states:
                 all_hidden_states += (hidden_states,)
+
+            seq_len = hidden_states.size(1)
+            token_weights = None
+            aux_weights = None
+            topk_indices = None
+            if decoder_layer.layer_idx % self.skip_block and self.router:
+                if self.aux_routing:
+                    # when using auxiliary router for inference
+                    token_weights = self.aux_router(hidden_states.detach()).squeeze(2)
+                    if self.training:
+                        # when training we still want to use our base router
+                        # but we want to train our aux router
+                        aux_weights = token_weights.clone()
+                        token_weights = self.router(hidden_states).squeeze(2)
+                else:
+                    token_weights = self.router(hidden_states).squeeze(2)
+
+                k = min(seq_len, self.capacity)
+                topk_weights, topk_indices = torch.topk(token_weights, k=k, sorted=False)
+                sorted_indices = torch.argsort(topk_indices)
+
+                y = hidden_states.clone()
+                hidden_states = hidden_states.gather(
+                    dim=1,
+                    index=repeat(sorted_indices, 'b s -> b s d', d=self.hidden_size)
+                )
+                seq_len = hidden_states.size(1)
+                position_ids = position_ids[:seq_len]   # positional ids are not used in the attention (it can be a problem for mod)
+
+            if seq_len > 1:
+                mask = torch.full(
+                    (seq_len, seq_len), float("-inf"), device=hidden_states.device
+                )
+                mask = torch.triu(mask, diagonal=1)
+
+                # When performing key-value caching, we compute the attention scores
+                # only for the new sequence. Thus, the matrix of scores is of size
+                # (seqlen, cache_len + seqlen), and the only masked entries are (i, j) for
+                # j > cache_len + i, since row i corresponds to token cache_len + i.
+                mask = torch.hstack([
+                    torch.zeros((seq_len, position_ids.min()), device=hidden_states.device),
+                    mask
+                ]).type_as(hidden_states)
+                if attention_mask is not None:
+                    if isinstance(decoder_layer, AnemoneAttentionDecoderLayer):
+                        attention_mask = mask.expand(batch_size, decoder_layer.self_attn.num_heads, seq_len, seq_len)
+
+
 
             if self.gradient_checkpointing and self.training:
                 layer_outputs = self._gradient_checkpointing_func(
@@ -603,6 +683,15 @@ class AnemoneModel(AnemonePreTrainedModel):
                 )
 
             hidden_states = layer_outputs[0]
+            if decoder_layer.layer_idx % self.skip_block and self.router:
+                # multiply router weights with hiddens to put router on gradient path
+                hidden_states *= topk_weights.gather(1, sorted_indices).unsqueeze(2)
+
+                hidden_states = y.scatter_add(
+                    dim=1,
+                    index=repeat(sorted_indices, 'b s -> b s d', d=self.hidden_size),
+                    src=hidden_states
+                )
 
             if use_cache:
                 next_decoder_cache = layer_outputs[2 if output_attentions else 1]
@@ -613,7 +702,9 @@ class AnemoneModel(AnemonePreTrainedModel):
             if output_router_logits:
                 mlp_router_logits += layer_outputs[-1][0] if isinstance(layer_outputs[-1][0], tuple) else ()
                 attn_router_loss += layer_outputs[-1][1][0] if isinstance(layer_outputs[-1][1], tuple) else 0
-                # TODO append mod_router_logits
+                if decoder_layer.layer_idx % self.skip_block and self.router:
+                    topk_indices_list.append(topk_indices)
+                    token_weights_list.append(token_weights)
 
         hidden_states = self.final_layernorm(hidden_states)
 
@@ -622,6 +713,7 @@ class AnemoneModel(AnemonePreTrainedModel):
             all_hidden_states += (hidden_states,)
 
         if output_router_logits:
+            mod_router_logits = (topk_indices_list, token_weights_list)
             all_router_logits += (mlp_router_logits, attn_router_loss, mod_router_logits)
 
         next_cache = None
@@ -755,10 +847,14 @@ class AnemoneForCausalLM(AnemonePreTrainedModel):
                 outputs.router_logits[0] if return_dict else outputs[-1][0],
                 self.config.num_experts,
                 self.config.num_experts_per_tok,
-                attention_mask,
+                None,   # remove the mask since padding is not used to train
             )
             attn_aux_loss = outputs.router_logits[1] if return_dict else outputs[-1][1]
-            aux_loss = self.config.router_aux_loss_coef * mlp_aux_loss + self.config.attn_router_aux_loss_coef * attn_aux_loss
+            mod_topk_indices, mod_token_weights = outputs.router_logits[2] if return_dict else outputs[-1][2]
+            mod_aux_loss = load_mod_loss(mod_token_weights, mod_topk_indices)
+            aux_loss = (self.config.router_aux_loss_coef * mlp_aux_loss
+                        + self.config.attn_router_aux_loss_coef * attn_aux_loss
+                        + self.config.mod_aux_loss_coef * mod_aux_loss)
             if labels is not None:
                 loss += aux_loss.to(loss.device)  # make sure to reside in the same device
 

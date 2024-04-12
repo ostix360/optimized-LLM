@@ -25,22 +25,37 @@ pip install -r requirements.txt
 - [x] Add [1.58 bits](https://arxiv.org/abs/2402.17764) linear layer for fastest inference but with quality loss (code from [1.58 bits](https://github.com/kyegomez/BitNet))
 - [x] Add [Galore](https://arxiv.org/abs/2403.03507) for the training
 - [x] Use [Jamba](https://arxiv.org/abs/2403.19887) as base architecture (code from [jamba](https://huggingface.co/ai21labs/Jamba-v0.1))
-- [ ] Use [Mixture of depth](https://arxiv.org/abs/2404.02258) 
+- [x] Use [Mixture of depth](https://arxiv.org/abs/2404.02258)  (code from [github](https://github.com/sramshetty/mixture-of-depths))
 - [x] Use [Mixture of attention head](https://arxiv.org/abs/2210.05144) (code from [JetMoE](https://github.com/myshell-ai/JetMoE))
 - [x] Add a script to train a LLM model from scratch
 
 
 ## Test
 
-To test the first model, that has 1.58 bits linear layer, jamba base architecture and moah:
+### Model Without mixture of depth
+
+To test the first model, that has 1.58 bits linear layer, jamba base architecture and moah, you can clone this repo at this [commit](https://github.com/ostix360/optimized-LLM/tree/8878e0f0bd764f85ce2ea56790a95f9837fb2fe4):
 
 
-
-you can clone this repo at this commit and run the following command:
+and run the following command:
 
 ```bash
 python infer.py
 ```
+
+### Model With mixture of depth
+
+To test the second model, that has 1.58 bits linear layer, jamba base architecture, moah and mod, you can clone this repo at this commit
+
+We start a training but the loss is decreasing but is not so good as without mod.
+
+You can start the training process by running the following command:
+
+```bash
+python train.py
+```
+
+and compare the results with the first model.
 
 
 ## Contributing

@@ -42,6 +42,11 @@ class AnemoneConfig(PretrainedConfig):
                  attn_num_experts=16,
                  attn_top_k=4,
                  attn_router_aux_loss_coef=0.001,
+                 mod_aux_loss_coef=0.001,
+                 mod_routing=True,
+                 mod_aux_routing=False,
+                 capacity=128,
+                 skip_blocks=2,
                  **kwargs, ):
         super().__init__()
         self.vocab_size = vocab_size
@@ -88,6 +93,13 @@ class AnemoneConfig(PretrainedConfig):
         self.attn_num_experts = attn_num_experts
         self.attn_top_k = attn_top_k
         self.attn_router_aux_loss_coef = attn_router_aux_loss_coef
+
+        # Adding config for mod
+        self.mod_aux_loss_coef = mod_aux_loss_coef
+        self.mod_routing = mod_routing
+        self.mod_aux_routing = mod_aux_routing
+        self.capacity = capacity
+        self.skip_blocks = skip_blocks
 
         super().__init__(
             pad_token_id=pad_token_id,
