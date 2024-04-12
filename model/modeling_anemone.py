@@ -654,7 +654,7 @@ class AnemoneForCausalLM(AnemonePreTrainedModel):
         super().__init__(config)
         self.config = config
 
-        self.anemone = AnemoneModel(config)
+        self.model = AnemoneModel(config)
         self.lm_head = nn.Linear(config.hidden_size, config.vocab_size, bias=False)
 
         self.init_weights()
@@ -717,7 +717,7 @@ class AnemoneForCausalLM(AnemonePreTrainedModel):
             if labels.shape != input_ids.shape:
                 raise ValueError(f"Labels shape {labels.shape} doesn't match input_ids shape {input_ids.shape}")
 
-        outputs = self.anemone(
+        outputs = self.model(
             input_ids,
             attention_mask=attention_mask,
             position_ids=position_ids,
@@ -791,7 +791,7 @@ class AnemoneForCausalLM(AnemonePreTrainedModel):
         if past_key_values is not None:
             # the cache may be in the stardard format (e.g. in contrastive search), convert to Jamba's format if needed
             if isinstance(past_key_values, Tuple):
-                if past_key_values[self.anemone._mamba_layer_index][0].shape[2] > 1:
+                if past_key_values[self.model._mamba_layer_index][0].shape[2] > 1:
                     past_key_values = self._convert_to_jamba_cache(past_key_values)
 
             if isinstance(past_key_values, Cache):
@@ -803,7 +803,7 @@ class AnemoneForCausalLM(AnemonePreTrainedModel):
                 past_length = past_key_values.seen_tokens
                 max_cache_length = past_key_values.get_max_length()
             else:
-                cache_length = past_length = past_key_values[self.anemone._attn_layer_index][0].shape[2]
+                cache_length = past_length = past_key_values[self.model._attn_layer_index][0].shape[2]
                 max_cache_length = None
 
             # Keep only the unprocessed tokens:
