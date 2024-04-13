@@ -851,7 +851,9 @@ class AnemoneForCausalLM(AnemonePreTrainedModel):
             )
             attn_aux_loss = outputs.router_logits[1] if return_dict else outputs[-1][1]
             mod_topk_indices, mod_token_weights = outputs.router_logits[2] if return_dict else outputs[-1][2]
-            mod_aux_loss = load_mod_loss(mod_token_weights, mod_topk_indices)
+            mod_aux_loss = 0
+            if len(mod_token_weights) != 0:
+                mod_aux_loss = load_mod_loss(mod_token_weights, mod_topk_indices)
             aux_loss = (self.config.router_aux_loss_coef * mlp_aux_loss
                         + self.config.attn_router_aux_loss_coef * attn_aux_loss
                         + self.config.mod_aux_loss_coef * mod_aux_loss)

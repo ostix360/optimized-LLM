@@ -4,17 +4,16 @@ from datasets import load_dataset
 from transformers import TrainingArguments, DataCollatorForLanguageModeling, AutoTokenizer
 
 from model.anemone_config import AnemoneConfig
-from model.modeling_anemone import AnemoneModel, AnemoneForCausalLM
+from model.modeling_anemone import AnemoneForCausalLM
 
 from transformers import Trainer
-
 
 
 tokenizer = AutoTokenizer.from_pretrained("ai21labs/Jamba-v0.1")
 
 mom_config = AnemoneConfig(
-    attn_layer_offset=3,
-    attn_layer_period=5,
+    attn_layer_offset=5,
+    attn_layer_period=6,
     attn_num_experts=16,
     attn_router_aux_loss_coef=0.05,
     attn_top_k=4,
@@ -25,7 +24,7 @@ mom_config = AnemoneConfig(
     hidden_act="silu",
     hidden_size=1024,
     initializer_range=0.02,
-    intermediate_size=2048,
+    intermediate_size=4048,
     mamba_conv_bias=True,
     mamba_d_conv=4,
     mamba_d_state=16,
@@ -39,7 +38,7 @@ mom_config = AnemoneConfig(
     num_attention_heads=32,
     num_experts=8,
     num_experts_per_tok=2,
-    num_hidden_layers=24,
+    num_hidden_layers=14,
     num_key_value_heads=8,
     rms_norm_eps=1e-6,
     mlp_router_aux_loss_coef=0.001,
@@ -111,7 +110,7 @@ args = TrainingArguments(
     max_steps=steps // batch_size,
     save_total_limit=1,
     save_strategy="steps",
-    save_steps=10000,
+    save_steps=10_000,
     weight_decay=0.02,
     lr_scheduler_type="linear",
     output_dir="./trains",

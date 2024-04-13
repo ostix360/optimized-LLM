@@ -47,8 +47,6 @@ python infer.py
 
 To test the second model, that has 1.58 bits linear layer, jamba base architecture, moah and mod, you can clone this repo at this commit
 
-We start a training but the loss is decreasing but is not so good as without mod.
-
 You can start the training process by running the following command:
 
 ```bash
@@ -56,6 +54,12 @@ python train.py
 ```
 
 and compare the results with the first model.
+
+You can also run the following command to test the inference time:
+
+```bash
+python infer.py
+```
 
 
 ## Contributing
