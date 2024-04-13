@@ -1,3 +1,4 @@
+import bitnet
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -43,8 +44,11 @@ class ParallelExperts(nn.Module):
             bias (bool): Whether to include bias terms.
         """
         super().__init__()
-        self.weight = nn.Parameter(torch.empty(num_experts, output_size, input_size))
-        self.reset_parameters()
+        # self.weight = nn.Parameter(torch.empty(num_experts, output_size, input_size))
+        self.linear = nn.ModuleList(
+            [bitnet.BitLinearNew(input_size, output_size, bias=False) for _ in range(num_experts)]
+        )
+        # self.reset_parameters()
         self.num_experts = num_experts
         self.input_size = input_size
         self.output_size = output_size
@@ -74,6 +78,7 @@ class ParallelExperts(nn.Module):
         input_list = inputs.split(expert_size, dim=0)
         output_list = []
         for i in range(self.num_experts):
-            output_list.append(F.linear(input_list[i], self.weight[i]))
+            output_list.append(self.linear[i](input_list[i]))
+            # output_list.append(F.linear(input_list[i], self.weight[i]))
         results = torch.cat(output_list, dim=0)
         return results

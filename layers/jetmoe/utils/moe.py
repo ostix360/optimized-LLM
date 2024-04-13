@@ -127,12 +127,14 @@ class MoE(nn.Module):
         for i in range(self.top_k):
             expert_idx = top_k_indices[0, i]
 
+            h2 = self.input_linear.linear[expert_idx](x)
             h = F.linear(x, self.input_linear.weight[expert_idx])
             if self.glu:
                 h, g = h.chunk(2, dim=-1)
                 h = self.activation(h) * g
             else:
                 h = self.activation(h)
+            y2 = self.output_linear.linear[expert_idx](h) * top_k_gates[0, i]
             y = F.linear(h, self.output_linear.weight[expert_idx]) * top_k_gates[0, i]
 
             y_list.append(y)
@@ -169,6 +171,7 @@ class MoE(nn.Module):
         y_list = []
         for i in range(self.top_k):
             expert_idx = self.top_k_indices[0, i]
+            y2 = self.input_linear.linear[expert_idx](x)
             y = F.linear(x, self.input_linear.weight[expert_idx])
             y_list.append(y)
         y = torch.cat(y_list, dim=0)
@@ -240,6 +243,7 @@ class MoE(nn.Module):
         y_list = []
         for i in range(self.top_k):
             expert_idx = self.top_k_indices[0, i]
+            y2 = self.output_linear.linear[expert_idx](x)
             y = F.linear(x[i], self.output_linear.weight[expert_idx]) * self.top_k_gates[0, i]
             y_list.append(y)
         y = sum(y_list)

@@ -1,3 +1,5 @@
+import os
+
 import numpy as np
 import torch
 from datasets import load_dataset
@@ -11,6 +13,18 @@ from transformers import Trainer
 
 tokenizer = AutoTokenizer.from_pretrained("ai21labs/Jamba-v0.1")
 
+os.environ["WANDB_PROJECT"] = "Mixture of mixture (mod, moah moe)"
+
+# define the model configuration
+capacity = 128
+skip_blocks = 2
+intermediate_size = 2512
+num_hidden_layers = 22
+hidden_size = 1024
+expert_layer_period = 2
+
+
+
 mom_config = AnemoneConfig(
     attn_layer_offset=5,
     attn_layer_period=6,
@@ -18,13 +32,13 @@ mom_config = AnemoneConfig(
     attn_router_aux_loss_coef=0.05,
     attn_top_k=4,
     calc_logits_for_entire_prompt=True,
-    capacity=64,
+    capacity=capacity,
     expert_layer_offset=1,
-    expert_layer_period=2,
+    expert_layer_period=expert_layer_period,
     hidden_act="silu",
-    hidden_size=1024,
+    hidden_size=hidden_size,
     initializer_range=0.02,
-    intermediate_size=4048,
+    intermediate_size=intermediate_size,
     mamba_conv_bias=True,
     mamba_d_conv=4,
     mamba_d_state=16,
@@ -38,11 +52,11 @@ mom_config = AnemoneConfig(
     num_attention_heads=32,
     num_experts=8,
     num_experts_per_tok=2,
-    num_hidden_layers=14,
+    num_hidden_layers=num_hidden_layers,
     num_key_value_heads=8,
     rms_norm_eps=1e-6,
     mlp_router_aux_loss_coef=0.001,
-    skip_blocks=2,
+    skip_blocks=skip_blocks,
     sliding_window=None,
     use_cache=True,
     use_mamba_kernels=True,
@@ -88,6 +102,8 @@ steps = len(train_dataset)
 
 data_collator = DataCollatorForLanguageModeling(tokenizer, mlm=False)
 
+run_name = f"n-h-l_{num_hidden_layers}_h-s_{hidden_size}_skip-b_{skip_blocks}_cap_{capacity}_int-sz_{intermediate_size}_exp-l-period_{expert_layer_period}_1.58bits"
+
 args = TrainingArguments(
     per_device_train_batch_size=batch_size,
     per_device_eval_batch_size=batch_size,
@@ -96,9 +112,9 @@ args = TrainingArguments(
     load_best_model_at_end=False,
     warmup_steps=20,
     num_train_epochs=1,
-    report_to=["none"],
+    report_to=["wandb"],
     evaluation_strategy="steps",
-    eval_steps=steps // batch_size,
+    eval_steps=1_000,
     learning_rate=5e-4,
     fp16=not torch.cuda.is_bf16_supported(),
     bf16=torch.cuda.is_bf16_supported(),
@@ -114,6 +130,7 @@ args = TrainingArguments(
     weight_decay=0.02,
     lr_scheduler_type="linear",
     output_dir="./trains",
+    run_name=run_name,
 )
 
 
@@ -139,4 +156,6 @@ model.train()
 
 trainer.train(resume_from_checkpoint=False)
 trainer.save_model("./model-anemone")
-# model.push_to_hub("MoM")
+
+model.push_to_hub("MoMv2")
+tokenizer.push_to_hub("MoMv2")
