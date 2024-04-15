@@ -171,8 +171,8 @@ class MoE(nn.Module):
         y_list = []
         for i in range(self.top_k):
             expert_idx = self.top_k_indices[0, i]
-            y2 = self.input_linear.linear[expert_idx](x)
-            y = F.linear(x, self.input_linear.weight[expert_idx])
+            y = self.input_linear.linear[expert_idx](x)
+            # y = F.linear(x, self.input_linear.weight[expert_idx])
             y_list.append(y)
         y = torch.cat(y_list, dim=0)
         y = y.view(bsz, length, self.top_k, -1)
@@ -231,7 +231,7 @@ class MoE(nn.Module):
         """
         bsz, length, emb_size = x.size()
         if bsz * length == 1:
-            return self.single_map(x)
+            return self.batch_map(x)
         else:
             return self.batch_map(x)
 
@@ -243,8 +243,8 @@ class MoE(nn.Module):
         y_list = []
         for i in range(self.top_k):
             expert_idx = self.top_k_indices[0, i]
-            y2 = self.output_linear.linear[expert_idx](x)
-            y = F.linear(x[i], self.output_linear.weight[expert_idx]) * self.top_k_gates[0, i]
+            y = self.output_linear.linear[expert_idx](x[i]) * self.top_k_gates[0, i]
+            # y = F.linear(x[i], self.output_linear.weight[expert_idx]) * self.top_k_gates[0, i]
             y_list.append(y)
         y = sum(y_list)
         y = y.view(bsz, length, self.input_size)
@@ -291,6 +291,6 @@ class MoE(nn.Module):
         """
         bsz, length, k, emb_size = x.size()
         if bsz * length == 1:
-            return self.single_reduce(x)
+            return self.batch_reduce(x)
         else:
             return self.batch_reduce(x)

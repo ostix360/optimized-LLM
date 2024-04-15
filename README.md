@@ -45,7 +45,7 @@ python infer.py
 
 ### Model With mixture of depth
 
-To test the second model, that has 1.58 bits linear layer, jamba base architecture, moah and mod, you can clone this repo at this commit
+To test the second model, that has 1.58 bits linear layer, jamba base architecture, moah and mod, you can clone this repo at this [commit](https://github.com/ostix360/optimized-LLM/tree/7cc2e6f39b69864e0cc80ca8b767229c536e6793)
 
 You can start the training process by running the following command:
 
@@ -55,12 +55,25 @@ python train.py
 
 and compare the results with the first model.
 
-You can also run the following command to test the inference time:
+You can also run the following command to test the inference:
 
 ```bash
 python infer.py
 ```
 
+### MoMv2-bf16 
+
+This [model](https://huggingface.co/Ostixe360/MoMv2-bf16) is a mixture of mixture (Mod, MoD, MoAH) with jamba base architecture.
+
+This model doesn't contain any 1.58 bits linear layer. 
+
+The difference between this model and the previous one is the use of a softmax function to weight the token for the mod and this break the causality and that's maybe why the model output no sense text.
+
+You can also run the following command to test the inference:
+
+```bash
+python infer.py
+```
 
 ## Contributing
 

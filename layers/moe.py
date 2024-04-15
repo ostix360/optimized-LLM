@@ -3,7 +3,7 @@ from typing import Tuple
 import torch
 from torch import nn
 
-import bitnet
+from bitnet import BitLinearNew
 from transformers.activations import ACT2FN
 import torch.nn.functional as F
 
@@ -16,9 +16,9 @@ class AnemoneMLP(nn.Module):
         self.ffn_dim = config.intermediate_size
         self.hidden_dim = config.hidden_size
 
-        self.gate_proj = bitnet.BitLinearNew(self.hidden_dim, self.ffn_dim, bias=False)
-        self.down_proj = bitnet.BitLinearNew(self.ffn_dim, self.hidden_dim, bias=False)
-        self.up_proj = bitnet.BitLinearNew(self.hidden_dim, self.ffn_dim, bias=False)
+        self.gate_proj = BitLinearNew(self.hidden_dim, self.ffn_dim, bias=False)
+        self.down_proj = BitLinearNew(self.ffn_dim, self.hidden_dim, bias=False)
+        self.up_proj = BitLinearNew(self.hidden_dim, self.ffn_dim, bias=False)
 
         self.act_fn = ACT2FN[config.hidden_act]
 
@@ -50,7 +50,7 @@ class AnemoneSparseMoeBlock(nn.Module):
 
         if num_experts > 1:
             # expert routing
-            self.router = bitnet.BitLinearNew(self.hidden_dim, self.num_experts, bias=False)
+            self.router = nn.Linear(self.hidden_dim, self.num_experts, bias=False)
         else:
             self.router = None
 

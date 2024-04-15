@@ -2,7 +2,7 @@ import warnings
 from dataclasses import dataclass, field
 from typing import Optional, Tuple, Dict, Any
 
-import bitnet
+from bitnet import BitLinearNew
 import torch
 from torch import nn
 from transformers import DynamicCache
@@ -176,11 +176,11 @@ class AnemoneMambaMixer(nn.Module):
         self.use_fast_kernels = config.use_mamba_kernels
 
         # projection of the input hidden states
-        self.in_proj = bitnet.BitLinearNew(self.hidden_size, self.intermediate_size * 2, bias=self.use_bias)
+        self.in_proj = BitLinearNew(self.hidden_size, self.intermediate_size * 2, bias=self.use_bias)
         # selective projection used to make dt, B and C input dependant
-        self.x_proj = bitnet.BitLinearNew(self.intermediate_size, self.time_step_rank + self.ssm_state_size * 2, bias=False)
+        self.x_proj = BitLinearNew(self.intermediate_size, self.time_step_rank + self.ssm_state_size * 2, bias=False)
         # time step projection (discretization)
-        self.dt_proj = bitnet.BitLinearNew(self.time_step_rank, self.intermediate_size, bias=True)
+        self.dt_proj = BitLinearNew(self.time_step_rank, self.intermediate_size, bias=True)
 
         # S4D real initialization. These are not discretized!
         # The core is to load them, compute the discrete states, then write the updated state. Keeps the memory bounded
@@ -189,7 +189,7 @@ class AnemoneMambaMixer(nn.Module):
 
         self.A_log = nn.Parameter(torch.log(A))
         self.D = nn.Parameter(torch.ones(self.intermediate_size))
-        self.out_proj = bitnet.BitLinearNew(self.intermediate_size, self.hidden_size, bias=self.use_bias)
+        self.out_proj = BitLinearNew(self.intermediate_size, self.hidden_size, bias=self.use_bias)
 
         if self.apply_inner_layernorms:
             self.dt_layernorm = AnemoneRMSNorm(self.time_step_rank, eps=config.rms_norm_eps)

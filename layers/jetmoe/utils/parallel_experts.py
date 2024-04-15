@@ -1,7 +1,7 @@
-import bitnet
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from bitnet import BitLinearNew
 
 
 @torch.jit.script
@@ -46,12 +46,12 @@ class ParallelExperts(nn.Module):
         super().__init__()
         # self.weight = nn.Parameter(torch.empty(num_experts, output_size, input_size))
         self.linear = nn.ModuleList(
-            [bitnet.BitLinearNew(input_size, output_size, bias=False) for _ in range(num_experts)]
+            [BitLinearNew(input_size, output_size, bias=False) for _ in range(num_experts)]
         )
-        # self.reset_parameters()
         self.num_experts = num_experts
         self.input_size = input_size
         self.output_size = output_size
+        # self.reset_parameters()
 
     def extra_repr(self):
         return "num_experts={}, input_size={}, output_size={}".format(
@@ -62,7 +62,9 @@ class ParallelExperts(nn.Module):
         """
         Reset the parameters of the model.
         """
-        nn.init.uniform_(self.weight, -1.0 / self.weight.size(1), 1.0 / self.weight.size(1))
+        for i in range(self.num_experts):
+            nn.init.uniform_(self.linear[i].weight, -1.0 / self.input_size, 1.0 / self.input_size)
+        # nn.init.uniform_(self.weight, -1.0 / self.weight.size(1), 1.0 / self.weight.size(1))
 
     def forward(self, inputs, expert_size):
         """

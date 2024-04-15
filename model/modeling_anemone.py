@@ -1,8 +1,9 @@
 import warnings
 from typing import Optional, Tuple, Union, List
 
-import bitnet
+
 import torch
+from bitnet import BitLinearNew
 from einops import repeat
 from torch import nn
 from torch.nn import CrossEntropyLoss
@@ -234,7 +235,6 @@ class AnemoneMambaDecoderLayer(nn.Module):
         """
 
         residual = hidden_states
-
         hidden_states = self.input_layernorm(hidden_states)
 
         hidden_states, present_key_value = self.mamba(
@@ -313,7 +313,7 @@ class AnemonePreTrainedModel(PreTrainedModel):
 
     def _init_weights(self, module):
         std = self.config.initializer_range
-        if isinstance(module, (nn.Linear, nn.Conv1d)):
+        if isinstance(module, (nn.Linear, nn.Conv1d,)):
             module.weight.data.normal_(mean=0.0, std=std)
             if module.bias is not None:
                 module.bias.data.zero_()
@@ -321,6 +321,8 @@ class AnemonePreTrainedModel(PreTrainedModel):
             module.weight.data.normal_(mean=0.0, std=std)
             if module.padding_idx is not None:
                 module.weight.data[module.padding_idx].zero_()
+        # else:
+        #     print("Skipping init for", module.__class__.__name__)
 
     @staticmethod
     def _convert_to_standard_cache(
@@ -441,12 +443,12 @@ class AnemoneModel(AnemonePreTrainedModel):
         self.router = None
         self.aux_router = None
         if config.mod_routing:
-            self.router = bitnet.BitLinearNew(config.hidden_size, 1, bias=False)
+            self.router = BitLinearNew(config.hidden_size, 1, bias=False)
             if config.mod_aux_routing:
                 self.aux_router = nn.Sequential(
-                    bitnet.BitLinearNew(config.hidden_size, config.hidden_size // 2, bias=False),
+                    BitLinearNew(config.hidden_size, config.hidden_size // 2, bias=False),
                     nn.SiLU(),
-                    bitnet.BitLinearNew(config.hidden_size // 2, 1, bias=False)
+                    BitLinearNew(config.hidden_size // 2, 1, bias=False)
                 )
 
         self.capacity = config.capacity
@@ -685,6 +687,7 @@ class AnemoneModel(AnemonePreTrainedModel):
             hidden_states = layer_outputs[0]
             if decoder_layer.layer_idx % self.skip_block and self.router:
                 # multiply router weights with hiddens to put router on gradient path
+                topk_weights = F.softmax(topk_weights, dim=1)
                 hidden_states *= topk_weights.gather(1, sorted_indices).unsqueeze(2)
 
                 hidden_states = y.scatter_add(

@@ -3,7 +3,7 @@ import inspect
 import warnings
 from typing import Optional, Tuple
 
-import bitnet
+from bitnet import BitLinearNew
 import torch
 from torch import nn
 import torch.nn.functional as F
@@ -107,8 +107,8 @@ class AnemoneAttention(nn.Module):
             num_experts=config.attn_num_experts,
             top_k=config.attn_top_k,
             glu=False)
-        self.k_proj = bitnet.BitLinearNew(self.hidden_size, self.num_key_value_heads * self.head_dim, bias=False)
-        self.v_proj = bitnet.BitLinearNew(self.hidden_size, self.num_key_value_heads * self.head_dim, bias=False)
+        self.k_proj = BitLinearNew(self.hidden_size, self.num_key_value_heads * self.head_dim, bias=False)
+        self.v_proj = BitLinearNew(self.hidden_size, self.num_key_value_heads * self.head_dim, bias=False)
 
     def _shape(self, tensor: torch.Tensor, seq_len: int, bsz: int):
         return tensor.view(bsz, seq_len, self.num_heads, self.head_dim).transpose(1, 2).contiguous()

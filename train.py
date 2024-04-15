@@ -1,10 +1,15 @@
 import os
 
+import bitnet
 import numpy as np
 import torch
 from datasets import load_dataset
+from torch import nn
 from transformers import TrainingArguments, DataCollatorForLanguageModeling, AutoTokenizer
 
+from layers import mamba, moe, attention
+from layers.jetmoe.utils import parallel_experts
+from layers.jetmoe.utils.parallel_experts import ParallelExperts
 from model.anemone_config import AnemoneConfig
 from model.modeling_anemone import AnemoneForCausalLM
 
@@ -15,11 +20,19 @@ tokenizer = AutoTokenizer.from_pretrained("ai21labs/Jamba-v0.1")
 
 os.environ["WANDB_PROJECT"] = "Mixture of mixture (mod, moah moe)"
 
+# bitlinear new take 2 Go of vram for bsz=5 and 1B parameter
+bitnet.BitLinearNew.forward = nn.Linear.forward     # Replace all bitlinear to classic linear
+# mamba.BitLinearNew.forward = nn.Linear.forward
+# attention.BitLinearNew.forward = nn.Linear.forward
+# parallel_experts.BitLinearNew.forward = nn.Linear.forward
+# moe.BitLinearNew.forward = nn.Linear.forward
+
+
 # define the model configuration
 capacity = 128
 skip_blocks = 2
-intermediate_size = 2512
-num_hidden_layers = 22
+intermediate_size = 4048
+num_hidden_layers = 14
 hidden_size = 1024
 expert_layer_period = 2
 
@@ -96,13 +109,13 @@ key = "text"
 train_dataset = t_ultra_textbooks.map(tokenize, batched=True, batch_size=10000, remove_columns=t_ultra_textbooks.column_names, )
 eval_dataset = eval_ultra_textbooks.map(tokenize, batched=True, batch_size=10000, remove_columns=eval_ultra_textbooks.column_names, )
 
-batch_size = 5
+batch_size = 8
 steps = len(train_dataset)
 
 
 data_collator = DataCollatorForLanguageModeling(tokenizer, mlm=False)
 
-run_name = f"n-h-l_{num_hidden_layers}_h-s_{hidden_size}_skip-b_{skip_blocks}_cap_{capacity}_int-sz_{intermediate_size}_exp-l-period_{expert_layer_period}_1.58bits"
+run_name = f"n-h-l_{num_hidden_layers}_h-s_{hidden_size}_skip-b_{skip_blocks}_cap_{capacity}_int-sz_{intermediate_size}_exp-l-period_{expert_layer_period}_full-prec"
 
 args = TrainingArguments(
     per_device_train_batch_size=batch_size,
@@ -114,7 +127,7 @@ args = TrainingArguments(
     num_train_epochs=1,
     report_to=["wandb"],
     evaluation_strategy="steps",
-    eval_steps=1_000,
+    eval_steps=1_000*5//batch_size,
     learning_rate=5e-4,
     fp16=not torch.cuda.is_bf16_supported(),
     bf16=torch.cuda.is_bf16_supported(),
@@ -157,5 +170,5 @@ model.train()
 trainer.train(resume_from_checkpoint=False)
 trainer.save_model("./model-anemone")
 
-model.push_to_hub("MoMv2")
-tokenizer.push_to_hub("MoMv2")
+model.push_to_hub("MoMv2-bf16")
+tokenizer.push_to_hub("MoMv2-bf16")
