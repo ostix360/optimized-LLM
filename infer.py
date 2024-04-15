@@ -2,11 +2,14 @@ import bitnet
 from torch import nn
 from transformers import AutoTokenizer
 
+from layers import attention
+from layers.jetmoe.utils import parallel_experts
 from model.modeling_anemone import AnemoneForCausalLM
 
-model_name="Ostix/MoMv2-bf16"
+model_name="./model-anemone"
 
-bitnet.BitLinearNew.forward = nn.Linear.forward
+attention.BitLinearNew.forward = nn.Linear.forward  # Replace bitlinear for attention
+parallel_experts.BitLinearNew.forward = nn.Linear.forward
 
 model = AnemoneForCausalLM.from_pretrained(model_name)
 tokenizer = AutoTokenizer.from_pretrained(model_name)

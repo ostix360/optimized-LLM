@@ -28,7 +28,7 @@ pip install -r requirements.txt
 - [x] Use [Mixture of depth](https://arxiv.org/abs/2404.02258)  (code from [github](https://github.com/sramshetty/mixture-of-depths))
 - [x] Use [Mixture of attention head](https://arxiv.org/abs/2210.05144) (code from [JetMoE](https://github.com/myshell-ai/JetMoE))
 - [x] Add a script to train a LLM model from scratch
-
+- [ ] Use a filtered dataset such as for [rho](https://github.com/microsoft/rho)
 
 ## Test
 
@@ -69,11 +69,24 @@ This model doesn't contain any 1.58 bits linear layer.
 
 The difference between this model and the previous one is the use of a softmax function to weight the token for the mod and this break the causality and that's maybe why the model output no sense text.
 
+You can also run the following command for [this commit](https://github.com/ostix360/optimized-LLM/tree/e223f9fa7bd136cfd836ceee522e1d98b97b08af) to test the inference:
+
+```bash
+python infer.py
+```
+
+### MoMv3 
+
+This [model](https://huggingface.co/Ostixe360/MoMv3-mixed-precision) is a mixture of mixture (Mod, MoD, MoAH) with jamba base architecture.
+
+All mamba, routers, moe, mlp are 1.58 bits linear layer. The linear layers in the attention mechanism are not 1.58 bits linear layers.
+
 You can also run the following command to test the inference:
 
 ```bash
 python infer.py
 ```
+
 
 ## Contributing
 

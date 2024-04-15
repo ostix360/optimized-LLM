@@ -687,7 +687,7 @@ class AnemoneModel(AnemonePreTrainedModel):
             hidden_states = layer_outputs[0]
             if decoder_layer.layer_idx % self.skip_block and self.router:
                 # multiply router weights with hiddens to put router on gradient path
-                topk_weights = F.softmax(topk_weights, dim=1)
+                topk_weights = F.sigmoid(topk_weights, )
                 hidden_states *= topk_weights.gather(1, sorted_indices).unsqueeze(2)
 
                 hidden_states = y.scatter_add(

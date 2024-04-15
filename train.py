@@ -5,26 +5,23 @@ import numpy as np
 import torch
 from datasets import load_dataset
 from torch import nn
+from transformers import Trainer
 from transformers import TrainingArguments, DataCollatorForLanguageModeling, AutoTokenizer
 
-from layers import mamba, moe, attention
+from layers import attention
 from layers.jetmoe.utils import parallel_experts
-from layers.jetmoe.utils.parallel_experts import ParallelExperts
 from model.anemone_config import AnemoneConfig
 from model.modeling_anemone import AnemoneForCausalLM
-
-from transformers import Trainer
-
 
 tokenizer = AutoTokenizer.from_pretrained("ai21labs/Jamba-v0.1")
 
 os.environ["WANDB_PROJECT"] = "Mixture of mixture (mod, moah moe)"
 
 # bitlinear new take 2 Go of vram for bsz=5 and 1B parameter
-bitnet.BitLinearNew.forward = nn.Linear.forward     # Replace all bitlinear to classic linear
+# bitnet.BitLinearNew.forward = nn.Linear.forward     # Replace all bitlinear to classic linear
 # mamba.BitLinearNew.forward = nn.Linear.forward
-# attention.BitLinearNew.forward = nn.Linear.forward
-# parallel_experts.BitLinearNew.forward = nn.Linear.forward
+attention.BitLinearNew.forward = nn.Linear.forward  # Replace bitlinear for attention
+parallel_experts.BitLinearNew.forward = nn.Linear.forward
 # moe.BitLinearNew.forward = nn.Linear.forward
 
 
@@ -109,13 +106,13 @@ key = "text"
 train_dataset = t_ultra_textbooks.map(tokenize, batched=True, batch_size=10000, remove_columns=t_ultra_textbooks.column_names, )
 eval_dataset = eval_ultra_textbooks.map(tokenize, batched=True, batch_size=10000, remove_columns=eval_ultra_textbooks.column_names, )
 
-batch_size = 8
+batch_size = 6
 steps = len(train_dataset)
 
 
 data_collator = DataCollatorForLanguageModeling(tokenizer, mlm=False)
 
-run_name = f"n-h-l_{num_hidden_layers}_h-s_{hidden_size}_skip-b_{skip_blocks}_cap_{capacity}_int-sz_{intermediate_size}_exp-l-period_{expert_layer_period}_full-prec"
+run_name = f"n-h-l_{num_hidden_layers}_h-s_{hidden_size}_skip-b_{skip_blocks}_cap_{capacity}_int-sz_{intermediate_size}_exp-l-period_{expert_layer_period}_att-full-prec_1.58bits"
 
 args = TrainingArguments(
     per_device_train_batch_size=batch_size,
@@ -155,11 +152,16 @@ trainer = Trainer(
     data_collator=data_collator,
 )
 
-
+# Count number of trainable parameters for attn and the rest
 def print_nb_trainable_params(model):
-    model_parameters = filter(lambda p: p.requires_grad, model.parameters())
-    params = sum([np.prod(p.size()) for p in model_parameters])
-    print(f"Number of trainable parameters: {params}")
+    attn = 0
+    other = 0
+    for name, param in model.named_parameters():
+        if "attn" in name:
+            attn += np.prod(param.shape)
+        else:
+            other += np.prod(param.shape)
+    print(f"Attn: {attn / 1_000_000}M, Other: {other / 1_000_000}M, Total: {(attn + other) / 1_000_000}M")
 
 print_nb_trainable_params(model)
 
@@ -170,5 +172,5 @@ model.train()
 trainer.train(resume_from_checkpoint=False)
 trainer.save_model("./model-anemone")
 
-model.push_to_hub("MoMv2-bf16")
-tokenizer.push_to_hub("MoMv2-bf16")
+model.push_to_hub("MoMv3-mixed-precision")
+tokenizer.push_to_hub("MoMv3-mixed-precision")
