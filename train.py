@@ -20,8 +20,8 @@ os.environ["WANDB_PROJECT"] = "Mixture of mixture (mod, moah moe)"
 # bitlinear new take 2 Go of vram for bsz=5 and 1B parameter
 # bitnet.BitLinearNew.forward = nn.Linear.forward     # Replace all bitlinear to classic linear
 # mamba.BitLinearNew.forward = nn.Linear.forward
-attention.BitLinearNew.forward = nn.Linear.forward  # Replace bitlinear for attention
-parallel_experts.BitLinearNew.forward = nn.Linear.forward
+# attention.BitLinearNew.forward = nn.Linear.forward  # Replace bitlinear for attention
+# parallel_experts.BitLinearNew.forward = nn.Linear.forward
 # moe.BitLinearNew.forward = nn.Linear.forward
 
 
@@ -106,13 +106,13 @@ key = "text"
 train_dataset = t_ultra_textbooks.map(tokenize, batched=True, batch_size=10000, remove_columns=t_ultra_textbooks.column_names, )
 eval_dataset = eval_ultra_textbooks.map(tokenize, batched=True, batch_size=10000, remove_columns=eval_ultra_textbooks.column_names, )
 
-batch_size = 6
+batch_size = 5
 steps = len(train_dataset)
 
 
 data_collator = DataCollatorForLanguageModeling(tokenizer, mlm=False)
 
-run_name = f"n-h-l_{num_hidden_layers}_h-s_{hidden_size}_skip-b_{skip_blocks}_cap_{capacity}_int-sz_{intermediate_size}_exp-l-period_{expert_layer_period}_att-full-prec_1.58bits"
+run_name = f"n-h-l_{num_hidden_layers}_h-s_{hidden_size}_skip-b_{skip_blocks}_cap_{capacity}_int-sz_{intermediate_size}_exp-l-period_{expert_layer_period}_1.58bits"
 
 args = TrainingArguments(
     per_device_train_batch_size=batch_size,
@@ -172,5 +172,5 @@ model.train()
 trainer.train(resume_from_checkpoint=False)
 trainer.save_model("./model-anemone")
 
-model.push_to_hub("MoMv3-mixed-precision")
-tokenizer.push_to_hub("MoMv3-mixed-precision")
+model.push_to_hub("MoMv3-1.58bits")
+tokenizer.push_to_hub("MoMv3-1.58bits")

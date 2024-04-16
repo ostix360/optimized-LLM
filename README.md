@@ -81,10 +81,16 @@ This [model](https://huggingface.co/Ostixe360/MoMv3-mixed-precision) is a mixtur
 
 All mamba, routers, moe, mlp are 1.58 bits linear layer. The linear layers in the attention mechanism are not 1.58 bits linear layers.
 
-You can also run the following command to test the inference:
+You can also run the following command to test the inference and change MoMv3 by MoMv3-mixed-precision in the file:
 
 ```bash
-python infer.py
+python infer.py --prompt "This is the story of"
+```
+
+To run the full 1.58bits model, you can run the following command:
+
+```bash
+python infer.py --prompt "This is the story of" --model "MoMv3-1.58bits"
 ```
 
 
