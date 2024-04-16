@@ -99,6 +99,23 @@ To run the model with mamba and attention in bf16 and the rest in 1.58bits, you 
 python infer.py --prompt "This is the story of" --model "MoMv3-M-A-mixed-precision"
 ```
 
+To run the full bf16 model, you can run the following command:
+
+```bash
+python infer.py --prompt "This is the story of" --model "MoMv3-bf16"
+```
+
+## Conclusion
+
+We can see ([here](https://wandb.ai/ostix360/Mixture%20of%20mixture%20(mod,%20moah%20moe))) that the baseline (MoMv3-bf16) has a similar loss curve as the attention and mamba in bf16 and the rest in 1.58bits (MoMv3-M-A-mixed-precision) and the attention in bf16 and the rest in 1.58bits (MoMv3-mixed-precision).
+
+Furthermore, the training is faster when attention is not at 1.58bits, and it takes lesser vram too.
+
+To train a model with long context and a lot of parameters, for a fast and low memory inference, I found that using the jamba architecture and with all linear layer in 1.58bits excepted for the attention mechanism's layers can be a godd strategy.
+With only 1.7% of parameters in bf16, the model can fit in cheap gpu during inference.
+Moreover, using all the mixture (moeh, moe and mod) you can train the model faster with only a few active parameters.
+
+
 ## Contributing
 
 Contributions are welcome.
