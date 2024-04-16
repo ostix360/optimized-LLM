@@ -8,7 +8,7 @@ from torch import nn
 from transformers import Trainer
 from transformers import TrainingArguments, DataCollatorForLanguageModeling, AutoTokenizer
 
-from layers import attention
+from layers import attention, mamba
 from layers.jetmoe.utils import parallel_experts
 from model.anemone_config import AnemoneConfig
 from model.modeling_anemone import AnemoneForCausalLM
@@ -19,9 +19,9 @@ os.environ["WANDB_PROJECT"] = "Mixture of mixture (mod, moah moe)"
 
 # bitlinear new take 2 Go of vram for bsz=5 and 1B parameter
 # bitnet.BitLinearNew.forward = nn.Linear.forward     # Replace all bitlinear to classic linear
-# mamba.BitLinearNew.forward = nn.Linear.forward
-# attention.BitLinearNew.forward = nn.Linear.forward  # Replace bitlinear for attention
-# parallel_experts.BitLinearNew.forward = nn.Linear.forward
+mamba.BitLinearNew.forward = nn.Linear.forward
+attention.BitLinearNew.forward = nn.Linear.forward  # Replace bitlinear for attention
+parallel_experts.BitLinearNew.forward = nn.Linear.forward
 # moe.BitLinearNew.forward = nn.Linear.forward
 
 
@@ -106,13 +106,13 @@ key = "text"
 train_dataset = t_ultra_textbooks.map(tokenize, batched=True, batch_size=10000, remove_columns=t_ultra_textbooks.column_names, )
 eval_dataset = eval_ultra_textbooks.map(tokenize, batched=True, batch_size=10000, remove_columns=eval_ultra_textbooks.column_names, )
 
-batch_size = 5
+batch_size = 8
 steps = len(train_dataset)
 
 
 data_collator = DataCollatorForLanguageModeling(tokenizer, mlm=False)
 
-run_name = f"n-h-l_{num_hidden_layers}_h-s_{hidden_size}_skip-b_{skip_blocks}_cap_{capacity}_int-sz_{intermediate_size}_exp-l-period_{expert_layer_period}_1.58bits"
+run_name = f"n-h-l_{num_hidden_layers}_h-s_{hidden_size}_skip-b_{skip_blocks}_cap_{capacity}_int-sz_{intermediate_size}_exp-l-period_{expert_layer_period}_M-A-fullprec_1.58bits"
 
 args = TrainingArguments(
     per_device_train_batch_size=batch_size,
@@ -154,14 +154,14 @@ trainer = Trainer(
 
 # Count number of trainable parameters for attn and the rest
 def print_nb_trainable_params(model):
-    attn = 0
+    bf16 = 0
     other = 0
     for name, param in model.named_parameters():
-        if "attn" in name:
-            attn += np.prod(param.shape)
+        if "attn" in name or "mamba" in name:
+            bf16 += np.prod(param.shape)
         else:
             other += np.prod(param.shape)
-    print(f"Attn: {attn / 1_000_000}M, Other: {other / 1_000_000}M, Total: {(attn + other) / 1_000_000}M")
+    print(f"Attn + Mamba: {bf16 / 1_000_000}M, Other: {other / 1_000_000}M, Total: {(bf16 + other) / 1_000_000}M")
 
 print_nb_trainable_params(model)
 
@@ -169,8 +169,10 @@ print_nb_trainable_params(model)
 model.to("cuda", dtype=torch.bfloat16)
 model.train()
 
+
+tokenizer.push_to_hub("MoMv3-M-A-mixed-precision") # Define the repository name
+
 trainer.train(resume_from_checkpoint=False)
 trainer.save_model("./model-anemone")
 
-model.push_to_hub("MoMv3-1.58bits")
-tokenizer.push_to_hub("MoMv3-1.58bits")
+model.push_to_hub("MoMv3-M-A-mixed-precision")

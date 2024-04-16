@@ -93,6 +93,11 @@ To run the full 1.58bits model, you can run the following command:
 python infer.py --prompt "This is the story of" --model "MoMv3-1.58bits"
 ```
 
+To run the model with mamba and attention in bf16 and the rest in 1.58bits, you can run the following command:
+
+```bash
+python infer.py --prompt "This is the story of" --model "MoMv3-M-A-mixed-precision"
+```
 
 ## Contributing
 
