@@ -5,7 +5,8 @@ import numpy as np
 import torch
 from datasets import load_dataset
 from torch import nn
-from transformers import Trainer
+from torch.nn import functional as F
+from transformers import Trainer, EvalPrediction
 from transformers import TrainingArguments, DataCollatorForLanguageModeling, AutoTokenizer
 
 from layers import attention, mamba
@@ -18,10 +19,10 @@ tokenizer = AutoTokenizer.from_pretrained("ai21labs/Jamba-v0.1")
 os.environ["WANDB_PROJECT"] = "Mixture of mixture (mod, moah moe)"
 
 # bitlinear_new take 2 Go of vram for bsz=5 and 1B parameter
-# bitnet.BitLinearNew.forward = nn.Linear.forward     # Replace all bitlinear to classic linear
+bitnet.BitLinearNew.forward = nn.Linear.forward     # Replace all bitlinear to classic linear
 # mamba.BitLinearNew.forward = nn.Linear.forward
-attention.BitLinearNew.forward = nn.Linear.forward  # Replace bitlinear for attention
-parallel_experts.BitLinearNew.forward = nn.Linear.forward
+# attention.BitLinearNew.forward = nn.Linear.forward  # Replace bitlinear for attention
+# parallel_experts.BitLinearNew.forward = nn.Linear.forward
 # moe.BitLinearNew.forward = nn.Linear.forward
 
 
@@ -95,9 +96,9 @@ def tokenize(element):
             input_batch.append(input_ids)
     return {"input_ids": input_batch}
 
+textbooks_split = int(100_000 * 5)
+eval_split = int(1_000 * 0.2)
 
-textbooks_split = int(100_000 * 1)
-eval_split = int(1_000 * 0.1)
 
 t_ultra_textbooks = load_dataset("Locutusque/UltraTextbooks", split=f"train[:{textbooks_split}]")
 eval_ultra_textbooks = load_dataset("Locutusque/UltraTextbooks", split=f"train[{textbooks_split}:{textbooks_split + eval_split}]")
@@ -106,13 +107,13 @@ key = "text"
 train_dataset = t_ultra_textbooks.map(tokenize, batched=True, batch_size=10000, remove_columns=t_ultra_textbooks.column_names, )
 eval_dataset = eval_ultra_textbooks.map(tokenize, batched=True, batch_size=10000, remove_columns=eval_ultra_textbooks.column_names, )
 
-batch_size = 7
+batch_size = 8
 steps = len(train_dataset)
 
 
 data_collator = DataCollatorForLanguageModeling(tokenizer, mlm=False)
 
-run_name = f"n-h-l_{num_hidden_layers}_h-s_{hidden_size}_skip-b_{skip_blocks}_cap_{capacity}_int-sz_{intermediate_size}_exp-l-period_{expert_layer_period}_att-full-prec_1.58bits"
+run_name = f"step_{steps}_n-h-l_{num_hidden_layers}_h-s_{hidden_size}_skip-b_{skip_blocks}_cap_{capacity}_int-sz_{intermediate_size}_exp-l-period_{expert_layer_period}_full-bf16"
 
 args = TrainingArguments(
     per_device_train_batch_size=batch_size,
@@ -143,6 +144,17 @@ args = TrainingArguments(
     run_name=run_name,
 )
 
+def compute_metrics(eval_pred: EvalPrediction):
+    logits, labels = eval_pred
+    predictions = F.softmax(logits, dim=-1)
+    _, predicted_indices = predictions.max(dim=-1)
+
+    # Calculate perplexity
+    loss = F.cross_entropy(predictions, labels, reduction='none')
+    perplexity = torch.exp(loss.mean()).item()
+
+    return {"perplexity": perplexity}
+
 
 trainer = Trainer(
     model=model,
@@ -150,6 +162,7 @@ trainer = Trainer(
     train_dataset=train_dataset,
     eval_dataset=eval_dataset,
     data_collator=data_collator,
+    # compute_metrics=compute_metrics,
 )
 
 # Count number of trainable parameters for attn and the rest
@@ -157,7 +170,7 @@ def print_nb_trainable_params(model):
     bf16 = 0
     other = 0
     for name, param in model.named_parameters():
-        if "attn" in name or "mamba" in name:
+        if "attn" in name or ("mamba" in name and "proj" not in name):
             bf16 += np.prod(param.shape)
         else:
             other += np.prod(param.shape)
@@ -170,9 +183,10 @@ model.to("cuda", dtype=torch.bfloat16)
 model.train()
 
 
-tokenizer.push_to_hub("MoMv3-bf16") # Define the repository name
+tokenizer.push_to_hub("MoMv4-bf16")  # Define the repository name
 
 trainer.train(resume_from_checkpoint=False)
 trainer.save_model("./model-anemone")
+eval = trainer.evaluate()
 
-model.push_to_hub("MoMv3-bf16")
+model.push_to_hub("MoMv4-bf16")

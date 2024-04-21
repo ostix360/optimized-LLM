@@ -28,6 +28,8 @@ pip install -r requirements.txt
 - [x] Use [Mixture of depth](https://arxiv.org/abs/2404.02258)  (code from [github](https://github.com/sramshetty/mixture-of-depths))
 - [x] Use [Mixture of attention head](https://arxiv.org/abs/2210.05144) (code from [JetMoE](https://github.com/myshell-ai/JetMoE))
 - [x] Add a script to train a LLM model from scratch
+- [x] Add evaluation script
+- [ ] Fix inference 
 - [ ] Use a filtered dataset such as for [rho](https://github.com/microsoft/rho)
 
 ## Test
@@ -104,6 +106,54 @@ To run the full bf16 model, you can run the following command:
 ```bash
 python infer.py --prompt "This is the story of" --model "MoMv3-bf16"
 ```
+
+### MoMv4
+
+This [model](https://huggingface.co/Ostixe360/MoMv4-1.58bits) is a mixture of mixture (Mod, MoD, MoAH) with jamba base architecture.
+
+All mamba, routers, moe, mlp are 1.58 bits linear layer. The linear layers in the attention mechanism are in bf16 precision.
+
+The total number of parameters is 1.7% in bf16 and the rest in 1.58bits.
+
+The total active parameters is in a first estimation 87M parameters over 1B parameters.
+
+Each mlp layer has 12.4M parameters each token can pass through 7 mlp layers and 7 mlp expert layer which is 2*7mlp layer.
+For mlp, the number of parameters is 12.4M * 21 = 261.1M parameters.
+We add the mamba and attention parameters that are near 107M parameters.
+And only 1/4 of the tokens pass through a block. So the total number of active parameters is 368.1/4 = 87M parameters.
+
+To test the inference, you can run the following command:
+
+```bash
+python infer.py --prompt "This is the story of" --model "MoMv4-1.58bits"
+```
+
+and 
+    
+```bash
+python infer.py --prompt "This is the story of" --model "MoMv4-bf16"
+```
+
+## Evaluation
+
+To evaluate the model, you can run the following command:
+
+```bash
+python eval.py --model "MoMv4-1.58bits" --max_seq_length 512
+```
+
+which has a loss of 2.62 and a perplexity of 13.77.
+
+You can also run the evaluation for the full bf16 model:
+
+```bash
+python eval.py --model "MoMv4-bf16" --max_seq_length 512
+```
+
+which has a loss of 2.53 and a perplexity of 12.59.
+
+The bf16 version is a bit better
+
 
 ## Conclusion
 

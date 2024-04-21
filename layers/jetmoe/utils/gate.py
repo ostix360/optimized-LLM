@@ -92,6 +92,6 @@ class top_k_gating(nn.Module):
             gates = zeros.scatter(1, top_k_indices, top_k_gates)
             self.loss = self.compute_aux_loss(probs, logits, gates)
         else:
-            self.loss = 0
+            self.loss = torch.Tensor([0]).to(x.device)
 
         return top_k_indices, top_k_gates

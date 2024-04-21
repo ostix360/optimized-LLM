@@ -159,7 +159,7 @@ class AnemoneAttentionDecoderLayer(nn.Module):
 
         hidden_states = self.input_layernorm(hidden_states)
 
-        hidden_states, self_attn_weights, present_key_value, attn_router_logits = self.self_attn(
+        hidden_states, self_attn_weights, present_key_value, attn_router_loss = self.self_attn(
             hidden_states=hidden_states,
             attention_mask=attention_mask,
             position_ids=position_ids,
@@ -186,7 +186,7 @@ class AnemoneAttentionDecoderLayer(nn.Module):
             outputs += (present_key_value,)
 
         if output_router_logits:
-            outputs += (((router_logits,), (attn_router_logits,),),)
+            outputs += (((router_logits,), (attn_router_loss,),),)
 
         return outputs
 
@@ -603,11 +603,11 @@ class AnemoneModel(AnemonePreTrainedModel):
         # decoder layers
         all_hidden_states = () if output_hidden_states else None
         all_self_attns = () if output_attentions else None
-        attn_router_loss = 0 if output_router_logits else None
+        attn_router_loss = torch.Tensor([0]).to(hidden_states.device) if output_router_logits else None
         mlp_router_logits = () if output_router_logits else None
         topk_indices_list = [] if output_router_logits else None
         token_weights_list = [] if output_router_logits else None
-        all_router_logits = () if output_router_logits else None
+        all_router_logits = [] if output_router_logits else None
         next_decoder_cache = None
 
         for decoder_layer in self.layers:
@@ -632,6 +632,7 @@ class AnemoneModel(AnemonePreTrainedModel):
 
                 k = min(seq_len, self.capacity)
                 topk_weights, topk_indices = torch.topk(token_weights, k=k, sorted=False)
+                topk_weights = F.sigmoid(topk_weights, )
                 sorted_indices = torch.argsort(topk_indices)
 
                 y = hidden_states.clone()
@@ -687,7 +688,6 @@ class AnemoneModel(AnemonePreTrainedModel):
             hidden_states = layer_outputs[0]
             if decoder_layer.layer_idx % self.skip_block and self.router:
                 # multiply router weights with hiddens to put router on gradient path
-                topk_weights = F.sigmoid(topk_weights, )
                 hidden_states *= topk_weights.gather(1, sorted_indices).unsqueeze(2)
 
                 hidden_states = y.scatter_add(
@@ -704,7 +704,7 @@ class AnemoneModel(AnemonePreTrainedModel):
 
             if output_router_logits:
                 mlp_router_logits += layer_outputs[-1][0] if isinstance(layer_outputs[-1][0], tuple) else ()
-                attn_router_loss += layer_outputs[-1][1][0] if isinstance(layer_outputs[-1][1], tuple) else 0
+                attn_router_loss += layer_outputs[-1][1][0] if isinstance(layer_outputs[-1][1], tuple) else torch.Tensor([0]).to(hidden_states.device)
                 if decoder_layer.layer_idx % self.skip_block and self.router:
                     topk_indices_list.append(topk_indices)
                     token_weights_list.append(token_weights)
@@ -717,7 +717,7 @@ class AnemoneModel(AnemonePreTrainedModel):
 
         if output_router_logits:
             mod_router_logits = (topk_indices_list, token_weights_list)
-            all_router_logits += (mlp_router_logits, attn_router_loss, mod_router_logits)
+            all_router_logits = [mlp_router_logits, attn_router_loss, mod_router_logits]
 
         next_cache = None
         if use_cache:
@@ -852,13 +852,13 @@ class AnemoneForCausalLM(AnemonePreTrainedModel):
                 self.config.num_experts_per_tok,
                 None,   # remove the mask since padding is not used to train
             )
-            attn_aux_loss = outputs.router_logits[1] if return_dict else outputs[-1][1]
-            mod_topk_indices, mod_token_weights = outputs.router_logits[2] if return_dict else outputs[-1][2]
+            attn_aux_loss = outputs.router_logits.pop(1) if return_dict else outputs[-1].pop(1)
+            mod_topk_indices, mod_token_weights = outputs.router_logits[1] if return_dict else outputs[-1][1]
             mod_aux_loss = 0
             if len(mod_token_weights) != 0:
                 mod_aux_loss = load_mod_loss(mod_token_weights, mod_topk_indices)
             aux_loss = (self.config.router_aux_loss_coef * mlp_aux_loss
-                        + self.config.attn_router_aux_loss_coef * attn_aux_loss
+                        + self.config.attn_router_aux_loss_coef * attn_aux_loss.squeeze(0)
                         + self.config.mod_aux_loss_coef * mod_aux_loss)
             if labels is not None:
                 loss += aux_loss.to(loss.device)  # make sure to reside in the same device

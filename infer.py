@@ -9,15 +9,15 @@ from layers.jetmoe.utils import parallel_experts
 from model.modeling_anemone import AnemoneForCausalLM
 
 def infer(model_name: str, prompt):
-    if "mixed-precision" in model_name:
+    if "mixed-precision" in model_name or "v4" in model_name:
         attention.BitLinearNew.forward = nn.Linear.forward  # Replace bitlinear for attention
         parallel_experts.BitLinearNew.forward = nn.Linear.forward
-    elif "bf16" in model_name:
-        bitnet.BitLinearNew.forward = nn.Linear.forward
-    elif "M-A-mixed-precision" in model_name:
+    if "M-A-mixed-precision" in model_name:
         attention.BitLinearNew.forward = nn.Linear.forward
         parallel_experts.BitLinearNew.forward = nn.Linear.forward
         mamba.BitLinearNew.forward = nn.Linear.forward
+    if "bf16" in model_name:
+        bitnet.BitLinearNew.forward = nn.Linear.forward
     model = AnemoneForCausalLM.from_pretrained(model_name)
     tokenizer = AutoTokenizer.from_pretrained(model_name)
 
