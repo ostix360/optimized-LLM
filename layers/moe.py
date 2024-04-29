@@ -1,4 +1,4 @@
-from typing import Tuple
+from typing import Tuple, Optional
 
 import torch
 from torch import nn
@@ -7,18 +7,21 @@ from bitnet import BitLinearNew
 from transformers.activations import ACT2FN
 import torch.nn.functional as F
 
+# from bitlinear import BitLinear
+
 from model.anemone_config import AnemoneConfig
 
 
 class AnemoneMLP(nn.Module):
-    def __init__(self, config: AnemoneConfig):
+    def __init__(self, config: AnemoneConfig, head_dim: int):
         super().__init__()
         self.ffn_dim = config.intermediate_size
         self.hidden_dim = config.hidden_size
+        self.head_dim = head_dim
 
-        self.gate_proj = BitLinearNew(self.hidden_dim, self.ffn_dim, bias=False)
-        self.down_proj = BitLinearNew(self.ffn_dim, self.hidden_dim, bias=False)
-        self.up_proj = BitLinearNew(self.hidden_dim, self.ffn_dim, bias=False)
+        self.gate_proj = BitLinearNew(self.head_dim, self.ffn_dim, bias=False)
+        self.down_proj = BitLinearNew(self.ffn_dim, self.head_dim, bias=False)
+        self.up_proj = BitLinearNew(self.head_dim, self.ffn_dim, bias=False)
 
         self.act_fn = ACT2FN[config.hidden_act]
 
@@ -43,18 +46,28 @@ class AnemoneSparseMoeBlock(nn.Module):
         super().__init__()
         self.hidden_dim = config.hidden_size
         self.ffn_dim = config.intermediate_size
+        self.num_heads = config.expert_num_heads  # n
 
         #   these values are decided on runtime depending on the layer index
         self.num_experts = num_experts
         self.top_k = num_experts_per_tok
+        if self.hidden_dim % self.num_heads != 0:
+            raise ValueError(
+                f"Hidden dimension ({self.hidden_dim}) must be divisible by the number of heads ({self.num_heads})"
+            )
+        self.head_dim = self.hidden_dim // self.num_heads  # h
+
+
 
         if num_experts > 1:
             # expert routing
-            self.router = nn.Linear(self.hidden_dim, self.num_experts, bias=False)
+            self.router = nn.Linear(self.head_dim, self.num_experts, bias=False)
+            self.multi_head = BitLinearNew(self.hidden_dim, self.hidden_dim, bias=False)
+            self.experts = nn.ModuleList([AnemoneMLP(config, self.head_dim) for _ in range(self.num_experts)])
+            self.merge = BitLinearNew(self.hidden_dim, self.hidden_dim, bias=False)
         else:
             self.router = None
-
-        self.experts = nn.ModuleList([AnemoneMLP(config) for _ in range(self.num_experts)])
+            self.experts = nn.ModuleList([AnemoneMLP(config, self.hidden_dim) for _ in range(self.num_experts)])
 
     def forward(self, hidden_states: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         """ """
@@ -71,8 +84,15 @@ class AnemoneSparseMoeBlock(nn.Module):
             )
             return final_hidden_states, router_logits
 
+        # MH-MoE
+
+        hidden_states = self.multi_head(hidden_states)
+        # hidden_states = hidden_states.view(batch_size, sequence_length, self.num_heads, self.head_dim)
+
+
+
         # in this case we have multiple experts and need to do routing
-        hidden_states = hidden_states.view(-1, hidden_dim)
+        hidden_states = hidden_states.view(-1, self.head_dim)
         # router_logits: (batch * sequence_length, n_experts)
         router_logits = self.router(hidden_states)
         routing_weights = F.softmax(router_logits, dim=1, dtype=torch.float)
@@ -81,7 +101,7 @@ class AnemoneSparseMoeBlock(nn.Module):
         routing_weights = routing_weights.to(hidden_states.dtype)
 
         final_hidden_states = torch.zeros(
-            (batch_size * sequence_length, hidden_dim), dtype=hidden_states.dtype, device=hidden_states.device
+            (batch_size * sequence_length * self.num_heads, self.head_dim), dtype=hidden_states.dtype, device=hidden_states.device
         )
 
         # One hot encode the selected experts to create an expert mask
@@ -103,11 +123,17 @@ class AnemoneSparseMoeBlock(nn.Module):
             # Index the correct hidden states and compute the expert hidden state for
             # the current expert. We need to make sure to multiply the output hidden
             # states by `routing_weights` on the corresponding tokens (top-1 and top-2)
-            current_state = hidden_states[None, top_x_list].reshape(-1, hidden_dim)
+            current_state = hidden_states[None, top_x_list].reshape(-1, self.head_dim)
             current_hidden_states = expert_layer(current_state) * routing_weights[top_x_list, idx_list, None]
 
             # However `index_add_` only support torch tensors for indexing so we'll use
             # the `top_x` tensor here.
             final_hidden_states.index_add_(0, top_x, current_hidden_states.to(hidden_states.dtype))
         final_hidden_states = final_hidden_states.reshape(batch_size, sequence_length, hidden_dim)
+
+        # MH-MoE
+
+        # final_hidden_states = final_hidden_states.view(batch_size, sequence_length, self.hidden_dim)
+        final_hidden_states = self.merge(final_hidden_states)
+
         return final_hidden_states, router_logits

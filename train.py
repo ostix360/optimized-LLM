@@ -29,12 +29,11 @@ bitnet.BitLinearNew.forward = nn.Linear.forward     # Replace all bitlinear to c
 # define the model configuration
 capacity = 128
 skip_blocks = 2
-intermediate_size = 4048
+expert_num_heads = 4
+intermediate_size = 6000//expert_num_heads
 num_hidden_layers = 14
-hidden_size = 1024
+hidden_size = 2240
 expert_layer_period = 2
-
-
 
 mom_config = AnemoneConfig(
     attn_layer_offset=5,
@@ -46,6 +45,7 @@ mom_config = AnemoneConfig(
     capacity=capacity,
     expert_layer_offset=1,
     expert_layer_period=expert_layer_period,
+    expert_num_heads=expert_num_heads,
     hidden_act="silu",
     hidden_size=hidden_size,
     initializer_range=0.02,
@@ -96,8 +96,9 @@ def tokenize(element):
             input_batch.append(input_ids)
     return {"input_ids": input_batch}
 
-textbooks_split = int(100_000 * 5)
-eval_split = int(1_000 * 0.2)
+
+textbooks_split = int(100_000 * 1)
+eval_split = int(1_000 * 0.1)
 
 
 t_ultra_textbooks = load_dataset("Locutusque/UltraTextbooks", split=f"train[:{textbooks_split}]")
@@ -107,13 +108,13 @@ key = "text"
 train_dataset = t_ultra_textbooks.map(tokenize, batched=True, batch_size=10000, remove_columns=t_ultra_textbooks.column_names, )
 eval_dataset = eval_ultra_textbooks.map(tokenize, batched=True, batch_size=10000, remove_columns=eval_ultra_textbooks.column_names, )
 
-batch_size = 8
+batch_size = 7
 steps = len(train_dataset)
 
 
 data_collator = DataCollatorForLanguageModeling(tokenizer, mlm=False)
 
-run_name = f"step_{steps}_n-h-l_{num_hidden_layers}_h-s_{hidden_size}_skip-b_{skip_blocks}_cap_{capacity}_int-sz_{intermediate_size}_exp-l-period_{expert_layer_period}_full-bf16"
+run_name = f"step_{steps}_n-h-l_{num_hidden_layers}_h-s_{hidden_size}_skip-b_{skip_blocks}_cap_{capacity}_int-sz_{intermediate_size}_exp-l-period_{expert_layer_period}_exp-head_{expert_num_heads}_full-bf16"
 
 args = TrainingArguments(
     per_device_train_batch_size=batch_size,
@@ -183,10 +184,10 @@ model.to("cuda", dtype=torch.bfloat16)
 model.train()
 
 
-tokenizer.push_to_hub("MoMv4-bf16")  # Define the repository name
+tokenizer.push_to_hub("MoMv5-bf16")  # Define the repository name
 
 trainer.train(resume_from_checkpoint=False)
 trainer.save_model("./model-anemone")
 eval = trainer.evaluate()
 
-model.push_to_hub("MoMv4-bf16")
+model.push_to_hub("MoMv5-bf16")

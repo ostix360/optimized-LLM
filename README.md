@@ -22,14 +22,16 @@ pip install -r requirements.txt
 
 ## TODO
 
-- [x] Add [1.58 bits](https://arxiv.org/abs/2402.17764) linear layer for fastest inference but with quality loss (code from [1.58 bits](https://github.com/kyegomez/BitNet))
+- [x] Add [1.58 bits](https://arxiv.org/abs/2402.17764) linear layer for the fastest inference but with quality loss (code from [1.58 bits](https://github.com/kyegomez/BitNet))
 - [x] Add [Galore](https://arxiv.org/abs/2403.03507) for the training
 - [x] Use [Jamba](https://arxiv.org/abs/2403.19887) as base architecture (code from [jamba](https://huggingface.co/ai21labs/Jamba-v0.1))
 - [x] Use [Mixture of depth](https://arxiv.org/abs/2404.02258)  (code from [github](https://github.com/sramshetty/mixture-of-depths))
 - [x] Use [Mixture of attention head](https://arxiv.org/abs/2210.05144) (code from [JetMoE](https://github.com/myshell-ai/JetMoE))
 - [x] Add a script to train a LLM model from scratch
 - [x] Add evaluation script
-- [ ] Fix inference 
+- [x] Use Multi-Head Mixture of Experts ([MH-MoE](https://arxiv.org/abs/2404.15045)) 
+- [ ] Fix 1.58 bits linear layer
+- [ ] Fix inference for MoD
 - [ ] Use a filtered dataset such as for [rho](https://github.com/microsoft/rho)
 
 ## Test
@@ -134,6 +136,26 @@ and
 python infer.py --prompt "This is the story of" --model "MoMv4-bf16"
 ```
 
+### MoMv5
+
+This [model](https://huggingface.co/Ostixe360/MoMv5-bf16) is a mixture of mixture (Mod, MoD, MoAH) with jamba base architecture.
+
+All mamba, routers, moe, mlp are in bf16 precision.
+
+To test the inference, you can run the following command:
+
+```bash
+python infer.py --prompt "This is the story of" --model "MoMv5-bf16"
+```
+
+and 
+
+```bash
+python eval.py --model "MoMv5-bf16" --max_seq_length 512
+```
+
+perplexity: 15.02
+
 ## Evaluation
 
 To evaluate the model, you can run the following command:
@@ -153,6 +175,8 @@ python eval.py --model "MoMv4-bf16" --max_seq_length 512
 which has a loss of 2.53 and a perplexity of 12.59.
 
 The bf16 version is a bit better
+
+
 
 
 ## Conclusion

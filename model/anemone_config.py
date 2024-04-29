@@ -47,6 +47,7 @@ class AnemoneConfig(PretrainedConfig):
                  mod_aux_routing=False,
                  capacity=128,
                  skip_blocks=2,
+                 expert_num_heads=8,
                  **kwargs, ):
         super().__init__()
         self.vocab_size = vocab_size
@@ -100,6 +101,7 @@ class AnemoneConfig(PretrainedConfig):
         self.mod_aux_routing = mod_aux_routing
         self.capacity = capacity
         self.skip_blocks = skip_blocks
+        self.expert_num_heads = expert_num_heads
 
         super().__init__(
             pad_token_id=pad_token_id,
